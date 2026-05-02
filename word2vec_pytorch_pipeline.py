@@ -39,6 +39,20 @@ QUERY_WORDS = [
 ]
 
 
+def log(message: str) -> None:
+    print(f"[word2vec] {message}", flush=True)
+
+
+def tqdm_kwargs(**kwargs):
+    base = {
+        "dynamic_ncols": True,
+        "mininterval": 1.0,
+        "leave": True,
+    }
+    base.update(kwargs)
+    return base
+
+
 class Vocab:
     def __init__(self, tokens: list[str]):
         if UNK_TOKEN not in tokens:
@@ -76,7 +90,7 @@ class CbowDataset(Dataset):
         self.data = []
         self.bos = vocab[BOS_TOKEN]
         self.eos = vocab[EOS_TOKEN]
-        for sentence in tqdm(corpus, desc="CBOW dataset"):
+        for sentence in tqdm(corpus, **tqdm_kwargs(desc="CBOW dataset", total=len(corpus))):
             sentence = [self.bos] + sentence + [self.eos]
             if len(sentence) < context_size * 2 + 1:
                 continue
@@ -102,7 +116,7 @@ class SkipGramDataset(Dataset):
         self.data = []
         self.bos = vocab[BOS_TOKEN]
         self.eos = vocab[EOS_TOKEN]
-        for sentence in tqdm(corpus, desc="Skip-Gram dataset"):
+        for sentence in tqdm(corpus, **tqdm_kwargs(desc="Skip-Gram dataset", total=len(corpus))):
             sentence = [self.bos] + sentence + [self.eos]
             for i in range(1, len(sentence) - 1):
                 w = sentence[i]
@@ -196,17 +210,26 @@ def load_reuters(config: RunConfig) -> tuple[list[list[int]], Vocab]:
 
     dataset_dir = config.root_dir / "dataset"
     nltk.data.path.insert(0, str(dataset_dir))
+    log(f"Loading Reuters corpus from {dataset_dir}")
     try:
         sents = reuters.sents()
     except LookupError:
+        log("Reuters corpus not found locally; downloading with nltk...")
         nltk.download("reuters", download_dir=str(dataset_dir), quiet=True)
         sents = reuters.sents()
 
+    log("Converting Reuters sentences to lowercase tokens")
     text = [[word.lower() for word in sentence] for sentence in sents]
     if config.max_sentences > 0:
         text = text[:config.max_sentences]
+        log(f"Using first {len(text)} Reuters sentences for this run")
+    else:
+        log(f"Using all {len(text)} Reuters sentences")
 
+    log(f"Building vocabulary with MIN_FREQ={config.min_freq}")
     vocab = Vocab.build(text, min_freq=config.min_freq, reserved_tokens=[PAD_TOKEN, BOS_TOKEN, EOS_TOKEN])
+    log(f"Vocabulary size: {len(vocab)}")
+    log("Converting tokens to ids")
     corpus = [vocab.convert_tokens_to_ids(sentence) for sentence in text]
     return corpus, vocab
 
@@ -227,9 +250,11 @@ def train_model(config: RunConfig) -> tuple[Vocab, torch.Tensor, list[float], st
 
     corpus, vocab = load_reuters(config)
     if config.model_type == "cbow":
+        log("Constructing CBOW training examples")
         dataset = CbowDataset(corpus, vocab, context_size=config.context_size)
         model = CbowModel(len(vocab), config.embedding_dim)
     elif config.model_type == "skipgram":
+        log("Constructing Skip-Gram training examples")
         dataset = SkipGramDataset(corpus, vocab, context_size=config.context_size)
         model = SkipGramModel(len(vocab), config.embedding_dim)
     else:
@@ -241,7 +266,7 @@ def train_model(config: RunConfig) -> tuple[Vocab, torch.Tensor, list[float], st
     optimizer = optim.Adam(model.parameters(), lr=0.001)
     nll_loss = nn.NLLLoss()
 
-    print(
+    log(
         f"Training {config.model_type}: device={device}, sentences={len(corpus)}, "
         f"vocab={len(vocab)}, examples={len(dataset)}, epochs={config.num_epoch}"
     )
@@ -249,7 +274,8 @@ def train_model(config: RunConfig) -> tuple[Vocab, torch.Tensor, list[float], st
     model.train()
     for epoch in range(config.num_epoch):
         total_loss = 0.0
-        for batch in tqdm(data_loader, desc=f"Training Epoch {epoch + 1}/{config.num_epoch}"):
+        progress = tqdm(data_loader, **tqdm_kwargs(desc=f"Training Epoch {epoch + 1}/{config.num_epoch}", total=len(data_loader)))
+        for batch in progress:
             inputs, targets = [x.to(device) for x in batch]
             optimizer.zero_grad()
             log_probs = model(inputs)
@@ -257,8 +283,9 @@ def train_model(config: RunConfig) -> tuple[Vocab, torch.Tensor, list[float], st
             loss.backward()
             optimizer.step()
             total_loss += float(loss.item())
+            progress.set_postfix(loss=f"{float(loss.item()):.4f}")
         losses.append(total_loss)
-        print(f"Loss: {total_loss:.2f}")
+        log(f"Epoch {epoch + 1}/{config.num_epoch} loss: {total_loss:.2f}")
 
     embeds = model.embeddings.weight.detach().cpu()
     return vocab, embeds, losses, str(device)
@@ -402,8 +429,11 @@ def run_pipeline(model_type: str, project_title: str, output_vec_name: str, proj
     config.output_dir.mkdir(exist_ok=True)
     (config.output_dir / "figures").mkdir(exist_ok=True)
 
+    log("Starting PyTorch Word2Vec pipeline")
     vocab, embeds, losses, device = train_model(config)
+    log(f"Saving embeddings to {config.output_dir / output_vec_name}")
     save_pretrained(vocab, embeds, config.output_dir / output_vec_name)
+    log("Running KNN, SimLex-999, and analogy evaluations")
     normed = normalized(embeds)
     sections = [
         f"# {config.project_title}",
@@ -426,4 +456,4 @@ def run_pipeline(model_type: str, project_title: str, output_vec_name: str, proj
         evaluate_analogies(config, vocab, embeds, normed),
     ]
     (config.output_dir / "results.md").write_text("\n".join(sections), encoding="utf-8")
-    print(f"Done. Results written to {config.output_dir}")
+    log(f"Done. Results written to {config.output_dir}")
