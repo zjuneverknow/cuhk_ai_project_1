@@ -212,14 +212,29 @@ def load_reuters(config: RunConfig) -> tuple[list[list[int]], Vocab]:
     nltk.data.path.insert(0, str(dataset_dir))
     log(f"Loading Reuters corpus from {dataset_dir}")
     try:
-        sents = reuters.sents()
+        fileids = reuters.fileids()
     except LookupError:
         log("Reuters corpus not found locally; downloading with nltk...")
         nltk.download("reuters", download_dir=str(dataset_dir), quiet=True)
-        sents = reuters.sents()
+        fileids = reuters.fileids()
 
-    log("Converting Reuters sentences to lowercase tokens")
-    text = [[word.lower() for word in sentence] for sentence in sents]
+    log("Converting Reuters documents to lowercase token sentences")
+    text = []
+    sentence = []
+    for fileid in tqdm(fileids, **tqdm_kwargs(desc="Reuters files", total=len(fileids))):
+        for word in reuters.words(fileid):
+            token = word.lower()
+            if token in {".", "?", "!", ";"}:
+                if sentence:
+                    text.append(sentence)
+                    sentence = []
+                continue
+            if re.search(r"[a-z0-9]", token):
+                sentence.append(token)
+        if sentence:
+            text.append(sentence)
+            sentence = []
+
     if config.max_sentences > 0:
         text = text[:config.max_sentences]
         log(f"Using first {len(text)} Reuters sentences for this run")
