@@ -27,6 +27,7 @@ outputs/
 outputs*/
 project1_cbow/outputs*/
 project2_skipgram/outputs*/
+experiment_logs/
 *.vec
 *.pt
 *.pth
