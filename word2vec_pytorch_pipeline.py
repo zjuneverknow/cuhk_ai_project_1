@@ -483,8 +483,8 @@ def evaluate_analogies(config: RunConfig, vocab: Vocab, embeds: torch.Tensor, no
 
 def run_pipeline(model_type: str, project_title: str, output_vec_name: str, project_dir: Path) -> None:
     config = read_config(model_type, project_title, output_vec_name, project_dir)
-    config.output_dir.mkdir(exist_ok=True)
-    (config.output_dir / "figures").mkdir(exist_ok=True)
+    config.output_dir.mkdir(parents=True, exist_ok=True)
+    (config.output_dir / "figures").mkdir(parents=True, exist_ok=True)
 
     log("Starting PyTorch Word2Vec pipeline")
     vocab, embeds, losses, device = train_model(config)

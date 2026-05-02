@@ -2,8 +2,18 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LOG_DIR="${ROOT_DIR}/experiment_logs"
-mkdir -p "${LOG_DIR}"
+
+output_dir_name() {
+  local alpha_only="$1"
+  local min_freq="$2"
+  local num_epoch="$3"
+  local max_sentences="$4"
+  local name="output_alpha_only_${alpha_only}_min_freq_${min_freq}_epoch_${num_epoch}"
+  if [[ "${max_sentences}" != "0" ]]; then
+    name="${name}_max_sentences_${max_sentences}"
+  fi
+  echo "${name}"
+}
 
 run_one() {
   local project_dir="$1"
@@ -14,7 +24,11 @@ run_one() {
   local num_epoch="$6"
   local max_sentences="${7:-0}"
 
-  local log_file="${LOG_DIR}/${model_name}_${experiment_name}.log"
+  local output_name
+  output_name="$(output_dir_name "${alpha_only}" "${min_freq}" "${num_epoch}" "${max_sentences}")"
+  local output_dir="${ROOT_DIR}/${project_dir}/outputs/${output_name}"
+  mkdir -p "${output_dir}"
+  local log_file="${output_dir}/run.log"
 
   echo "============================================================"
   echo "[RUN] ${model_name} / ${experiment_name}"
@@ -48,7 +62,7 @@ run_experiment_for_both_models() {
 
 echo "[word2vec] Starting 4 experiments x 2 models = 8 runs"
 echo "[word2vec] Root: ${ROOT_DIR}"
-echo "[word2vec] Logs: ${LOG_DIR}"
+echo "[word2vec] Logs: each run writes to its own outputs/output_*/run.log"
 
 # 1. Original baseline: original tokenization, MIN_FREQ=1, 10 epochs.
 run_experiment_for_both_models "baseline" 0 1 10 0
