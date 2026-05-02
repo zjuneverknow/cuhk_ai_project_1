@@ -10,9 +10,9 @@ uv run python train_pytorch.py
 
 Outputs are written to a parameterized output folder, for example:
 
-- `outputs_alpha_only_0`: default full Reuters tokens
-- `outputs_alpha_only_1`: alphabetic tokens only
-- `outputs_alpha_only_1_min_freq_3`: alphabetic tokens only with `MIN_FREQ=3`
+- `outputs/output_alpha_only_0_min_freq_1_epoch_10`: default full Reuters tokens
+- `outputs/output_alpha_only_1_min_freq_1_epoch_10`: alphabetic tokens only
+- `outputs/output_alpha_only_1_min_freq_3_epoch_10`: alphabetic tokens only with `MIN_FREQ=3`
 
 - `cbow.vec`: generated word embeddings
 - `results.md`: KNN, SimLex-999, and analogy evaluation results

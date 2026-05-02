@@ -198,7 +198,7 @@ def read_config(model_type: str, project_title: str, output_vec_name: str, proje
     max_sentences = int(os.getenv("MAX_SENTENCES", "0"))
     student_id = int(os.getenv("STUDENT_ID", "5010"))
 
-    output_dir = project_dir / output_dir_name(
+    output_dir = project_dir / "outputs" / output_dir_name(
         alpha_only=alpha_only,
         min_freq=min_freq,
         num_epoch=num_epoch,
@@ -223,11 +223,12 @@ def read_config(model_type: str, project_title: str, output_vec_name: str, proje
 
 
 def output_dir_name(alpha_only: bool, min_freq: int, num_epoch: int, max_sentences: int) -> str:
-    parts = ["outputs", f"alpha_only_{int(alpha_only)}"]
-    if min_freq != 1:
-        parts.append(f"min_freq_{min_freq}")
-    if num_epoch != 10:
-        parts.append(f"epochs_{num_epoch}")
+    parts = [
+        "output",
+        f"alpha_only_{int(alpha_only)}",
+        f"min_freq_{min_freq}",
+        f"epoch_{num_epoch}",
+    ]
     if max_sentences != 0:
         parts.append(f"max_sentences_{max_sentences}")
     return "_".join(parts)
