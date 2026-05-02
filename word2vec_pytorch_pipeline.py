@@ -178,6 +178,7 @@ class RunConfig:
     min_freq: int = 1
     max_sentences: int = 0
     student_id: int = 5010
+    alpha_only: bool = False
 
 
 def init_weights(model: nn.Module) -> None:
@@ -188,20 +189,48 @@ def init_weights(model: nn.Module) -> None:
 
 def read_config(model_type: str, project_title: str, output_vec_name: str, project_dir: Path) -> RunConfig:
     root_dir = project_dir.parent
+    alpha_only = os.getenv("ALPHA_ONLY", "0").strip().lower() in {"1", "true", "yes", "y"}
+    embedding_dim = int(os.getenv("EMBED_DIM", "64"))
+    context_size = int(os.getenv("CONTEXT_SIZE", "2"))
+    batch_size = int(os.getenv("BATCH_SIZE", "1024"))
+    num_epoch = int(os.getenv("NUM_EPOCH", "10"))
+    min_freq = int(os.getenv("MIN_FREQ", "1"))
+    max_sentences = int(os.getenv("MAX_SENTENCES", "0"))
+    student_id = int(os.getenv("STUDENT_ID", "5010"))
+
+    output_dir = project_dir / output_dir_name(
+        alpha_only=alpha_only,
+        min_freq=min_freq,
+        num_epoch=num_epoch,
+        max_sentences=max_sentences,
+    )
+
     return RunConfig(
         model_type=model_type,
         project_title=project_title,
         output_vec_name=output_vec_name,
         root_dir=root_dir,
-        output_dir=project_dir / "outputs",
-        embedding_dim=int(os.getenv("EMBED_DIM", "64")),
-        context_size=int(os.getenv("CONTEXT_SIZE", "2")),
-        batch_size=int(os.getenv("BATCH_SIZE", "1024")),
-        num_epoch=int(os.getenv("NUM_EPOCH", "10")),
-        min_freq=int(os.getenv("MIN_FREQ", "1")),
-        max_sentences=int(os.getenv("MAX_SENTENCES", "0")),
-        student_id=int(os.getenv("STUDENT_ID", "5010")),
+        output_dir=output_dir,
+        embedding_dim=embedding_dim,
+        context_size=context_size,
+        batch_size=batch_size,
+        num_epoch=num_epoch,
+        min_freq=min_freq,
+        max_sentences=max_sentences,
+        student_id=student_id,
+        alpha_only=alpha_only,
     )
+
+
+def output_dir_name(alpha_only: bool, min_freq: int, num_epoch: int, max_sentences: int) -> str:
+    parts = ["outputs", f"alpha_only_{int(alpha_only)}"]
+    if min_freq != 1:
+        parts.append(f"min_freq_{min_freq}")
+    if num_epoch != 10:
+        parts.append(f"epochs_{num_epoch}")
+    if max_sentences != 0:
+        parts.append(f"max_sentences_{max_sentences}")
+    return "_".join(parts)
 
 
 def load_reuters(config: RunConfig) -> tuple[list[list[int]], Vocab]:
@@ -219,6 +248,8 @@ def load_reuters(config: RunConfig) -> tuple[list[list[int]], Vocab]:
         fileids = reuters.fileids()
 
     log("Converting Reuters documents to lowercase token sentences")
+    if config.alpha_only:
+        log("ALPHA_ONLY=1: keeping only tokens that match ^[a-z]+$")
     text = []
     sentence = []
     for fileid in tqdm(fileids, **tqdm_kwargs(desc="Reuters files", total=len(fileids))):
@@ -228,6 +259,8 @@ def load_reuters(config: RunConfig) -> tuple[list[list[int]], Vocab]:
                 if sentence:
                     text.append(sentence)
                     sentence = []
+                continue
+            if config.alpha_only and not re.fullmatch(r"[a-z]+", token):
                 continue
             if re.search(r"[a-z0-9]", token):
                 sentence.append(token)
@@ -256,6 +289,14 @@ def save_pretrained(vocab: Vocab, embeds: torch.Tensor, save_path: Path) -> None
             vec = " ".join(f"{float(x):.4f}" for x in embeds[idx])
             writer.write(f"{token} {vec}\n")
     print(f"Pretrained embeddings saved to: {save_path}")
+
+
+def guidance_file(root_dir: Path, file_name: str) -> Path:
+    candidates = [root_dir / file_name, root_dir / "guidance" / file_name]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    raise FileNotFoundError(f"Cannot find {file_name} in {root_dir} or {root_dir / 'guidance'}")
 
 
 def train_model(config: RunConfig) -> tuple[Vocab, torch.Tensor, list[float], str]:
@@ -344,7 +385,7 @@ def evaluate_knn(vocab: Vocab, normed: np.ndarray, seed: int) -> str:
 def evaluate_simlex(root_dir: Path, vocab: Vocab, normed: np.ndarray, seed: int) -> str:
     rows = []
     standard, calculated = [], []
-    for line in (root_dir / "simlex-999.txt").read_text(encoding="utf-8", errors="ignore").splitlines():
+    for line in guidance_file(root_dir, "simlex-999.txt").read_text(encoding="utf-8", errors="ignore").splitlines():
         parts = line.split()
         if len(parts) < 3:
             continue
@@ -367,7 +408,7 @@ def evaluate_simlex(root_dir: Path, vocab: Vocab, normed: np.ndarray, seed: int)
 
 def load_analogies(root_dir: Path):
     current = "unknown"
-    for line in (root_dir / "analogical reasoning task.txt").read_text(encoding="utf-8", errors="ignore").splitlines():
+    for line in guidance_file(root_dir, "analogical reasoning task.txt").read_text(encoding="utf-8", errors="ignore").splitlines():
         line = line.strip()
         if not line:
             continue
@@ -461,6 +502,7 @@ def run_pipeline(model_type: str, project_title: str, output_vec_name: str, proj
         f"- Batch size: {config.batch_size}",
         f"- Epochs: {config.num_epoch}",
         f"- Min frequency: {config.min_freq}",
+        f"- Alpha-only token filter: {config.alpha_only}",
         f"- Max sentences: {config.max_sentences if config.max_sentences > 0 else 'all Reuters sentences'}",
         f"- Losses: {', '.join(f'{loss:.2f}' for loss in losses)}",
         "",

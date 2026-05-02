@@ -24,8 +24,9 @@ nltk_data/
 
 # Training outputs and generated artifacts
 outputs/
-project1_cbow/outputs/
-project2_skipgram/outputs/
+outputs*/
+project1_cbow/outputs*/
+project2_skipgram/outputs*/
 *.vec
 *.pt
 *.pth

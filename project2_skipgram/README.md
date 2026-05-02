@@ -8,7 +8,11 @@ Run the original PyTorch Skip-Gram pipeline:
 uv run python train_pytorch.py
 ```
 
-Outputs are written to `outputs/`:
+Outputs are written to a parameterized output folder, for example:
+
+- `outputs_alpha_only_0`: default full Reuters tokens
+- `outputs_alpha_only_1`: alphabetic tokens only
+- `outputs_alpha_only_1_min_freq_3`: alphabetic tokens only with `MIN_FREQ=3`
 
 - `skipgram.vec`: generated word embeddings
 - `results.md`: KNN, SimLex-999, and analogy evaluation results
@@ -23,9 +27,16 @@ Optional environment variables:
 - `NUM_EPOCH`: number of training epochs, default `10`
 - `MIN_FREQ`: minimum token frequency in the Reuters vocabulary, default `1`
 - `MAX_SENTENCES`: number of Reuters sentences to use; `0` means all sentences
+- `ALPHA_ONLY`: keep only alphabetic tokens when set to `1`, default `0`
 
 Quick smoke test:
 
 ```powershell
 $env:NUM_EPOCH="1"; $env:MAX_SENTENCES="200"; $env:MIN_FREQ="2"; uv run python train_pytorch.py
+```
+
+Alpha-only experiment:
+
+```powershell
+$env:ALPHA_ONLY="1"; $env:MIN_FREQ="3"; uv run python train_pytorch.py
 ```
